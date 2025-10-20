@@ -1,0 +1,16 @@
+{
+  "tournaments": [
+    {
+      "id": 1,
+      "name": "Squad Match #1",
+      "time": "2025-10-22T20:00:00",
+      "password": "FFPASS123"
+    },
+    {
+      "id": 2,
+      "name": "Solo Match #2",
+      "time": "2025-10-22T21:00:00",
+      "password": "SOLO999"
+    }
+  ]
+}
