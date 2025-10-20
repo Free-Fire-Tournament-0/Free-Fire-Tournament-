@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Free Fire Tournament Control</title>
+  <style>
+    body {
+      font-family: "Poppins", sans-serif;
+      background: #0f172a;
+      color: white;
+      margin: 0;
+      padding: 0;
+    }
+    header {
+      background: #1e293b;
+      text-align: center;
+      padding: 15px;
+      color: #38bdf8;
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .container {
+      max-width: 700px;
+      margin: 20px auto;
+      background: #1e293b;
+      padding: 20px;
+      border-radius: 10px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.3);
+    }
+    .match {
+      border-bottom: 1px solid #334155;
+      padding: 15px 0;
+    }
+    .match:last-child {
+      border: none;
+    }
+    button {
+      background: #38bdf8;
+      color: #0f172a;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:disabled {
+      background: gray;
+      cursor: not-allowed;
+    }
+    .password {
+      margin-top: 8px;
+      color: #facc15;
+      font-weight: bold;
+    }
+    footer {
+      text-align: center;
+      color: #94a3b8;
+      padding: 10px;
+      font-size: 0.8rem;
+    }
+  </style>
+</head>
+<body>
+  <header>🔥 Free Fire Tournament Control 🔥</header>
+
+  <div class="container" id="matches"></div>
+
+  <footer>© 2025 FF Tournament | Managed by Admin</footer>
+
+  <script>
+    async function loadMatches() {
+      try {
+        const response = await fetch("data.json?" + new Date().getTime()); // ক্যাশ বন্ধ রাখে
+        const data = await response.json();
+        renderMatches(data.tournaments);
+      } catch (err) {
+        document.getElementById('matches').innerHTML = "<p>⚠️ ডেটা লোড করতে সমস্যা হচ্ছে।</p>";
+      }
+    }
+
+    function renderMatches(matches) {
+      const container = document.getElementById("matches");
+      container.innerHTML = "";
+      const now = new Date();
+
+      matches.forEach(match => {
+        const matchTime = new Date(match.time);
+        let status = "";
+        let buttonHTML = "";
+        const diff = now - matchTime;
+
+        if (now < matchTime) {
+          status = `⏰ ম্যাচ শুরু হবে: ${matchTime.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}`;
+          buttonHTML = `<button disabled>Join Locked</button>`;
+        } else if (diff >= 0 && diff <= 15 * 60 * 1000) {
+          status = "✅ ম্যাচ চলছে - এখন Join করা যাবে!";
+          buttonHTML = `<button onclick="showPassword(${match.id})">Join Now</button>`;
+        } else {
+          status = "🏁 ম্যাচ শেষ";
+          buttonHTML = `<button disabled>Closed</button>`;
+        }
+
+        container.innerHTML += `
+          <div class="match">
+            <h2>${match.name}</h2>
+            <p>${status}</p>
+            ${buttonHTML}
+            <div class="password" id="pass-${match.id}"></div>
+          </div>
+        `;
+      });
+    }
+
+    function showPassword(id) {
+      fetch("data.json?" + new Date().getTime())
+        .then(res => res.json())
+        .then(data => {
+          const match = data.tournaments.find(m => m.id === id);
+          document.getElementById(`pass-${id}`).textContent = "Room Password: " + match.password;
+        });
+    }
+
+    setInterval(loadMatches, 5000);
+    loadMatches();
+  </script>
+</body>
+</html>
