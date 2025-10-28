@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="bn">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ফটো সাইজ জেনারেটর</title>
+  <style>
+    :root{--accent:#0b74de}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;max-width:980px;margin:18px auto;padding:18px}
+    h1{font-size:1.4rem;margin:0 0 8px}
+    p.small{color:#444;margin-top:4px}
+    .row{display:flex;gap:12px;flex-wrap:wrap;margin-top:12px}
+    label{display:block;font-size:0.9rem}
+    select,input,button{padding:8px;border:1px solid #ddd;border-radius:8px}
+    .card{border:1px solid #eee;padding:12px;border-radius:12px;box-shadow:0 6px 18px rgba(10,10,10,0.02);}
+    canvas{max-width:100%;border:1px dashed #ddd;background:#fafafa}
+    .preview{display:flex;gap:12px;align-items:center}
+    .controls{min-width:240px}
+    .meta{font-size:0.85rem;color:#333}
+    .btn{background:var(--accent);color:white;border:none;padding:10px 14px;border-radius:10px;cursor:pointer}
+    .btn:disabled{opacity:0.5}
+    footer{margin-top:18px;color:#666;font-size:0.9rem}
+  </style>
+</head>
+<body>
+  <h1>ফটো সাইজ জেনারেটর (ক্লায়েন্ট-সাইড)</h1>
+  <p class="small">আপনি ছবি আপলোড করুন, সাইজ সিলেক্ট করুন (মিমি/ইঞ্চি), &quot;Generate&quot; চাপলেই ছবিটি নির্দিষ্ট সাইজে কেটে ও রিসাইজ হবে — তারপর ডাউনলোড করতে পারবেন। সব কাজ ব্রাউজারেই হবে, সার্ভারে ফাইল আপলোড হয় না।</p>
+
+  <div class="row">
+    <div class="card controls">
+      <label>১) ছবি আপলোড করুন</label>
+      <input id="fileInput" type="file" accept="image/*">
+
+      <label style="margin-top:10px">২) প্রিসেট সাইজ নির্বাচন করুন</label>
+      <select id="preset">
+        <!-- sizes stored in mm -->
+        <option value="35x45">Passport (35 × 45 mm)</option>
+        <option value="51x51">US Passport (2 × 2 in — 51 × 51 mm)</option>
+        <option value="30x40">ID Photo (30 × 40 mm)</option>
+        <option value="50x50">Visa Photo (50 × 50 mm)</option>
+        <option value="25x25">Stamp (25 × 25 mm)</option>
+        <option value="101.6x152.4">4×6 in (101.6 × 152.4 mm)</option>
+        <option value="40x60">Photographer 40 × 60 mm</option>
+        <option value="custom">Custom size</option>
+      </select>
+
+      <div id="customInputs" style="margin-top:10px;display:none">
+        <label>প্রস্থ (mm)</label>
+        <input id="customW" type="number" step="0.1" value="35">
+        <label style="margin-top:6px">উচ্চ (mm)</label>
+        <input id="customH" type="number" step="0.1" value="45">
+      </div>
+
+      <label style="margin-top:10px">৩) রেজ্যুলেশন (DPI)</label>
+      <input id="dpi" type="number" value="300">
+      <p class="meta">ডিফল্ট 300 DPI — প্রিন্টিং-এর জন্য ভালো।</p>
+
+      <label style="margin-top:10px">৪) ফিট মোড</label>
+      <select id="fitMode">
+        <option value="cover">Cover (সঠিক অ্যাস্পেক্ট রেশিও পেতে ক্রপ করবে)</option>
+        <option value="contain">Contain (পুরো ছবি দেখাবে, ব্যাকগ্রাউন্ড ফিল)</option>
+      </select>
+
+      <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+        <button id="generateBtn" class="btn" disabled>Generate</button>
+        <a id="downloadLink" style="display:none" class="btn" download="resized.png">Download</a>
+      </div>
+
+      <p style="margin-top:8px;" class="meta">Output format: PNG (transparent allowed). JPEG এর জন্য ডাউনলোড লিংকের শেষে <code>?format=jpeg</code> যুক্ত করুন।</p>
+    </div>
+
+    <div class="card" style="flex:1">
+      <div class="preview">
+        <div style="flex:1">
+          <label>Preview</label>
+          <canvas id="canvas"></canvas>
+        </div>
+        <div style="width:220px">
+          <label>Output details</label>
+          <div id="details" class="meta">No image yet.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>ব্যবহার নির্দেশ — ছবি আপলোড করুন → সাইজ/ডিপিআই নির্বাচন করুন → Generate → Download।</footer>
+
+  <script>
+    const fileInput = document.getElementById('fileInput');
+    const preset = document.getElementById('preset');
+    const customInputs = document.getElementById('customInputs');
+    const customW = document.getElementById('customW');
+    const customH = document.getElementById('customH');
+    const dpiInput = document.getElementById('dpi');
+    const fitMode = document.getElementById('fitMode');
+    const generateBtn = document.getElementById('generateBtn');
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const details = document.getElementById('details');
+    const downloadLink = document.getElementById('downloadLink');
+
+    let img = new Image();
+    let imgLoaded = false;
+
+    function mmToPx(mm, dpi){
+      return Math.round(mm * dpi / 25.4);
+    }
+
+    preset.addEventListener('change', e=>{
+      if(e.target.value === 'custom') customInputs.style.display = 'block';
+      else customInputs.style.display = 'none';
+    });
+
+    fileInput.addEventListener('change', e=>{
+      const f = e.target.files[0];
+      if(!f) return;
+      const url = URL.createObjectURL(f);
+      img = new Image();
+      img.onload = ()=>{
+        imgLoaded = true;
+        generateBtn.disabled = false;
+        details.innerText = `Image loaded — ${img.width}×${img.height} px`;
+        drawPreviewSimple();
+      }
+      img.src = url;
+    });
+
+    function getSelectedSize(){
+      if(preset.value === 'custom'){
+        const w = parseFloat(customW.value) || 35;
+        const h = parseFloat(customH.value) || 45;
+        return {wmm: w, hmm: h};
+      } else {
+        const [w,h] = preset.value.split('x').map(x => parseFloat(x));
+        return {wmm: w, hmm: h};
+      }
+    }
+
+    function drawPreviewSimple(){
+      // show the image inside canvas scaled to fit the preview area (no cropping)
+      const PWIDTH = 500;
+      const ratio = img.width / img.height;
+      const w = Math.min(PWIDTH, img.width);
+      const h = Math.round(w / ratio);
+      canvas.width = w; canvas.height = h;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(img,0,0,w,h);
+    }
+
+    generateBtn.addEventListener('click', ()=>{
+      if(!imgLoaded) return;
+      const dpi = Math.max(72, parseInt(dpiInput.value) || 300);
+      const {wmm,hmm} = getSelectedSize();
+      const outW = mmToPx(wmm, dpi);
+      const outH = mmToPx(hmm, dpi);
+
+      // create an offscreen canvas with target pixels
+      const outCanvas = document.createElement('canvas');
+      outCanvas.width = outW; outCanvas.height = outH;
+      const octx = outCanvas.getContext('2d');
+
+      // compute cropping depending on mode
+      const srcW = img.width, srcH = img.height;
+      const srcRatio = srcW / srcH;
+      const outRatio = outW / outH;
+
+      let sx=0, sy=0, sWidth=srcW, sHeight=srcH;
+
+      if(fitMode.value === 'cover'){
+        // crop to cover
+        if(srcRatio > outRatio){
+          // source wider -> crop sides
+          sWidth = Math.round(srcH * outRatio);
+          sx = Math.round((srcW - sWidth)/2);
+        } else {
+          // source taller -> crop top/bottom
+          sHeight = Math.round(srcW / outRatio);
+          sy = Math.round((srcH - sHeight)/2);
+        }
+        octx.drawImage(img, sx, sy, sWidth, sHeight, 0,0, outW, outH);
+      } else {
+        // contain — fit inside and center with white background
+        octx.fillStyle = '#ffffff';
+        octx.fillRect(0,0,outW,outH);
+        let drawW=outW, drawH=outH, dx=0, dy=0;
+        if(srcRatio > outRatio){ // image wider
+          drawW = outW;
+          drawH = Math.round(outW / srcRatio);
+          dy = Math.round((outH - drawH)/2);
+        } else {
+          drawH = outH;
+          drawW = Math.round(outH * srcRatio);
+          dx = Math.round((outW - drawW)/2);
+        }
+        octx.drawImage(img, 0,0,srcW,srcH, dx,dy, drawW,drawH);
+      }
+
+      // show in preview canvas (scaled down if too large)
+      const previewMax = 700;
+      let showW = outCanvas.width, showH = outCanvas.height;
+      if(showW > previewMax){
+        const ratio = previewMax / showW;
+        showW = previewMax; showH = Math.round(showH * ratio);
+      }
+      canvas.width = showW; canvas.height = showH;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(outCanvas, 0,0, outCanvas.width, outCanvas.height, 0,0, showW, showH);
+
+      details.innerHTML = `Output: ${outW} × ${outH} px (${wmm} × ${hmm} mm @ ${dpi} DPI)\nMode: ${fitMode.value}`;
+
+      // prepare download link (PNG). We create blob to enable download with filename
+      outCanvas.toBlob(blob=>{
+        const url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+        // include info in filename
+        const fname = `photo_${wmm}x${hmm}mm_${dpi}dpi.png`;
+        downloadLink.download = fname;
+        downloadLink.style.display = 'inline-block';
+        downloadLink.innerText = 'Download PNG';
+      }, 'image/png');
+
+      // also create a JPEG option via query param: user can add ?format=jpeg to the download link
+      // create a second link shown as small helper (not necessary but useful)
+    });
+
+    // helpful: allow pressing Enter to trigger if inputs filled
+    [preset, customW, customH, dpiInput, fitMode].forEach(el=>el.addEventListener('keydown', (e)=>{ if(e.key==='Enter' && !generateBtn.disabled) generateBtn.click(); }));
+
+  </script>
+</body>
+</html>
